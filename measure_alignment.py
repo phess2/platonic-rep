@@ -146,7 +146,7 @@ if __name__ == "__main__":
     parser.add_argument("--prompt_y",       action="store_true")
     parser.add_argument("--pool_y",         type=str, default=None, choices=['avg', 'cls'])
 
-    parser.add_argument("--modelset",       type=str, default="val", choices=["val", "test"])
+    parser.add_argument("--modelset",       type=str, default="val", choices=["val", "test", "custom"])
     parser.add_argument("--metric",         type=str, default="mutual_knn", choices=metrics.AlignmentMetrics.SUPPORTED_METRICS)
     parser.add_argument("--topk",           type=int, default=10)
 
