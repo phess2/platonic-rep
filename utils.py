@@ -34,8 +34,8 @@ def to_alignment_filename(output_dir, dataset, modelset,
         f"{metric}_k{topk}.npy" if 'knn' in metric else f"{metric}.npy"
     )
     return save_path
-    
-    
+
+
 def cross_entropy_loss(llm_inputs, llm_outputs):
     criterion = torch.nn.CrossEntropyLoss(reduction="none")
     mask = llm_inputs["attention_mask"][:, :-1]

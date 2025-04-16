@@ -169,12 +169,12 @@ if __name__ == "__main__":
         torch.backends.cudnn.benchmark = True
     
     save_path = utils.to_alignment_filename(
-            args.output_dir, args.dataset, args.modelset,
+            args.output_dir, args.dataset, 'gemma_stuff',
             args.modality_x, args.pool_x, args.prompt_x,
             args.modality_y, args.pool_y, args.prompt_y,
             args.metric, args.topk
     )
-    
+
     if os.path.exists(save_path) and not args.force_remake:
         print(f"alignment already exists at {save_path}")
         exit()

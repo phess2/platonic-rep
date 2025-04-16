@@ -1,5 +1,5 @@
 import torch
-from transformers import AutoModelForCausalLM, BitsAndBytesConfig, AutoTokenizer, AutoConfig
+from transformers import AutoModelForCausalLM, BitsAndBytesConfig, AutoTokenizer, AutoConfig, AutoProcessor, Gemma3ForCausalLM, Gemma3ForConditionalGeneration
 
 
 def auto_determine_dtype():
@@ -22,11 +22,13 @@ def check_bfloat16_support():
             return False
     else:
         return None
-    
-    
+
+
 def load_llm(llm_model_path, qlora=False, force_download=False, from_init=False):
     """ load huggingface language model """
     compute_dtype, torch_dtype = auto_determine_dtype()
+    # compute_dtype = torch.float32
+    # torch_dtype = torch.float32
     
     quantization_config = None
     if qlora:
@@ -40,40 +42,66 @@ def load_llm(llm_model_path, qlora=False, force_download=False, from_init=False)
         )
 
     if from_init:
-        config = AutoConfig.from_pretrained(llm_model_path,
-                                            device_map="auto",
-                                            quantization_config=quantization_config,
-                                            torch_dtype=torch_dtype,
-                                            force_download=force_download,
-                                            output_hidden_states=True,)
-        language_model = AutoModelForCausalLM.from_config(config)
-        language_model = language_model.to(torch_dtype)
-        language_model = language_model.to("cuda" if torch.cuda.is_available() else "cpu")
-        language_model = language_model.eval()
-    else:      
-        language_model = AutoModelForCausalLM.from_pretrained(
+        if 'gemma-3' in llm_model_path:
+            raise NotImplementedError("Gemma-3 does not support from_init")
+        else:
+            config = AutoConfig.from_pretrained(llm_model_path,
+                                                device_map="auto",
+                                                quantization_config=quantization_config,
+                                                torch_dtype=torch_dtype,
+                                                force_download=force_download,
+                                                output_hidden_states=True,)
+            language_model = AutoModelForCausalLM.from_config(config)
+            language_model = language_model.to(torch_dtype)
+            language_model = language_model.to("cuda" if torch.cuda.is_available() else "cpu")
+            language_model = language_model.eval()
+    else:
+        if 'gemma-3' in llm_model_path:
+            # if '1b' in llm_model_path:
+            language_model = Gemma3ForCausalLM.from_pretrained(
                 llm_model_path,
                 device_map="auto",
-                quantization_config=quantization_config,
                 torch_dtype=torch_dtype,
                 force_download=force_download,
+                return_dict_in_generate=True,
                 output_hidden_states=True,
-        ).eval()
-    
+            ).eval()
+            # else:
+            #     language_model = Gemma3ForConditionalGeneration.from_pretrained(
+            #         llm_model_path,
+            #         device_map="auto",
+            #         torch_dtype=torch_dtype,
+            #         force_download=force_download,
+            #         return_dict_in_generate=True,
+            #         output_hidden_states=True,
+            #     ).eval()
+        else:
+            language_model = AutoModelForCausalLM.from_pretrained(
+                    llm_model_path,
+                    device_map="auto",
+                    quantization_config=quantization_config,
+                    torch_dtype=torch_dtype,
+                    force_download=force_download,
+                    output_hidden_states=True,
+            ).eval()
+
     return language_model
 
 
 def load_tokenizer(llm_model_path):
     """ setting up tokenizer. if your tokenizer needs special settings edit here. """
     tokenizer = AutoTokenizer.from_pretrained(llm_model_path)
-    
+
     if "huggyllama" in llm_model_path:
-        tokenizer.pad_token = "[PAD]"        
+        tokenizer.pad_token = "[PAD]"
     else:
         # pass 
         # tokenizer.add_special_tokens({"pad_token":"<pad>"})
         if tokenizer.pad_token is None:    
             tokenizer.pad_token = tokenizer.pad_token or tokenizer.eos_token
-    
-    tokenizer.padding_side = "left"
+
+    if 'gemma-3' in llm_model_path:
+        tokenizer.padding_side = "right"
+    else:
+        tokenizer.padding_side = "left"
     return tokenizer

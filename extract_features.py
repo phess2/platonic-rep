@@ -34,7 +34,7 @@ def extract_llm_features(filenames, dataset, args):
             args.output_dir, args.dataset, args.subset, llm_model_name,
             pool=args.pool, prompt=args.prompt, caption_idx=args.caption_idx,
         )
-        
+
         os.makedirs(os.path.dirname(save_path), exist_ok=True)
         print(f"\ndataset: \t{args.dataset}")
         print(f"subset:    \t{args.subset}")
@@ -44,12 +44,15 @@ def extract_llm_features(filenames, dataset, args):
         if os.path.exists(save_path) and not args.force_remake:
             print("file exists. skipping")
             continue
-        
+
         language_model = load_llm(llm_model_name, qlora=args.qlora, force_download=args.force_download)
         llm_param_count = sum([p.numel() for p in language_model.parameters()])
         tokenizer = load_tokenizer(llm_model_name)
-    
-        tokens = tokenizer(texts, padding="longest", return_tensors="pt")        
+
+        if "gemma-3" in llm_model_name:
+            tokens = tokenizer(texts, padding='do_not_pad')
+        else:
+            tokens = tokenizer(texts, padding="longest", return_tensors="pt")        
         llm_feats, losses, bpb_losses = [], [], []
 
         # hack to get around HF mapping data incorrectly when using model-parallel
@@ -57,7 +60,12 @@ def extract_llm_features(filenames, dataset, args):
 
         for i in trange(0, len(dataset), args.batch_size):
             # get embedding cuda device
-            token_inputs = {k: v[i:i+args.batch_size].to(device).long() for (k, v) in tokens.items()}
+            if "gemma-3" in llm_model_name:
+                if args.batch_size > 1:
+                    raise NotImplementedError("batch size > 1 is not supported for gemma-3")
+                token_inputs = {k: torch.tensor(v[i:i+args.batch_size]).to(device).long() for (k, v) in tokens.items()}
+            else:
+                token_inputs = {k: v[i:i+args.batch_size].to(device).long() for (k, v) in tokens.items()}
 
             with torch.no_grad():
                 if "olmo" in llm_model_name.lower():
@@ -77,7 +85,7 @@ def extract_llm_features(filenames, dataset, args):
                 
                 bpb = utils.cross_entropy_to_bits_per_unit(loss.cpu(), texts[i:i+args.batch_size], unit="byte")
                 bpb_losses.extend(bpb)
-                
+
                 # make sure to do all the processing in cpu to avoid memory problems
                 if args.pool == 'avg':
                     feats = torch.stack(llm_output["hidden_states"]).permute(1, 0, 2, 3)
@@ -91,10 +99,14 @@ def extract_llm_features(filenames, dataset, args):
                 llm_feats.append(feats.cpu())
 
         print(f"average loss:\t{torch.stack(losses).mean().item()}")
+        if type(tokens["attention_mask"]) == torch.Tensor:
+            mask = tokens["attention_mask"].cpu()
+        else:
+            mask = tokens["attention_mask"]
         save_dict = {
             "feats": torch.cat(llm_feats).cpu(),
             "num_params": llm_param_count,
-            "mask": tokens["attention_mask"].cpu(),
+            "mask": mask,
             "loss": torch.stack(losses).mean(),
             "bpb": torch.stack(bpb_losses).mean(),
         }
@@ -183,7 +195,7 @@ if __name__ == "__main__":
     parser.add_argument("--dataset",        type=str, default="prh")
     parser.add_argument("--subset",         type=str, default="wit_1024")
     parser.add_argument("--caption_idx",    type=int, default=0)
-    parser.add_argument("--modelset",       type=str, default="val", choices=["val", "test"])
+    parser.add_argument("--modelset",       type=str, default="val", choices=["val", "test", "custom"])
     parser.add_argument("--modality",       type=str, default="all", choices=["vision", "language", "all"])
     parser.add_argument("--output_dir",     type=str, default="./results/features")
     parser.add_argument("--qlora",          action="store_true")
